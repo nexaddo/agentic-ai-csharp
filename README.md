@@ -88,9 +88,9 @@ flowchart LR
     B[Build & Test]
     C[Build & Push Image → GHCR]
     D{Branch/Tag?}
-    E[Deploy Staging (kustomize overlay)]
+    E[Deploy Staging]
     F[[Manual Approval<br/>Environment: production]]
-    G[Deploy Production (kustomize overlay)]
+    G[Deploy Production]
   end
 
   subgraph K8s["Kubernetes Cluster"]
