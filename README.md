@@ -85,7 +85,7 @@ flowchart LR
   end
 
   subgraph GitHub["GitHub Actions"]
-    B[Build & Test (.NET)]
+    B[Build & Test (dotnet)]
     C[Build & Push Image → GHCR]
     D{Branch/Tag?}
     E[Deploy Staging (kustomize overlay)]
