@@ -21,8 +21,8 @@ jobs:
   build_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: ${{ env.DOTNET_VERSION }} }
       - run: dotnet restore SupportAgent.sln
       - run: dotnet build --no-restore -c Release SupportAgent.sln
@@ -38,7 +38,7 @@ jobs:
     outputs:
       deploy_tag: ${{ steps.vars.outputs.deploy_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - id: vars
         run: |
