@@ -21,15 +21,16 @@ jobs:
   build_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
-        with: { dotnet-version: ${{ env.DOTNET_VERSION }} }
-      - run: dotnet restore SupportAgent.sln
-      - run: dotnet build --no-restore -c Release SupportAgent.sln
-      - run: dotnet test --no-build -c Release --logger trx --results-directory TestResults
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: test-results, path: TestResults }
+    - uses: actions/checkout@v5
+    - uses: actions/setup-dotnet@v5
+      with: 
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - run: dotnet restore SupportAgent.sln
+    - run: dotnet build --no-restore -c Release SupportAgent.sln
+    - run: dotnet test --no-build -c Release --logger trx --results-directory TestResults
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with: { name: test-results, path: TestResults }
 
   docker_publish:
     runs-on: ubuntu-latest
@@ -90,7 +91,8 @@ jobs:
 
       - name: Write kubeconfig
         run: echo "${KUBE_CONFIG_B64}" | base64 -d > $HOME/.kube/config
-        env: { KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} }
+        env: 
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} 
 
       - name: Set image for staging overlay
         working-directory: deploy/overlays/staging
@@ -137,7 +139,8 @@ jobs:
       - uses: azure/setup-kubectl@v4
         with: { version: "v1.29.0" }
       - run: echo "${KUBE_CONFIG_B64}" | base64 -d > $HOME/.kube/config
-        env: { KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} }
+        env: 
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
       - name: Delete PR namespace
         run: |
           NS="ai-support-staging-pr-${{ github.event.number }}"
@@ -165,7 +168,8 @@ jobs:
         with: { version: "v1.29.0" }
       - run: sudo curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash && sudo mv kustomize /usr/local/bin/kustomize
       - run: echo "${KUBE_CONFIG_B64}" | base64 -d > $HOME/.kube/config
-        env: { KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} }
+        env: 
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
 
       - name: Set image for prod overlay
         working-directory: deploy/overlays/production
