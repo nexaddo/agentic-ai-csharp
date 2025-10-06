@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ai-support-agent
+  labels:
+    app: ai-support-agent
+spec:
+  containers:
+    - name: web
+      image: localhost/ai-support-agent:local
+      ports:
+        - containerPort: 5000
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      hostPath:
+        path: /var/lib/ai-support-agent/data
+        type: DirectoryOrCreate

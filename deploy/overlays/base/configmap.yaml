@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: support-agent-config
+data:
+  ASPNETCORE_URLS: "http://+:5000"
+  ConnectionStrings__Sqlite: "Data Source=/data/support.db"
+  AzureOpenAI__Endpoint: "https://YOUR-RESOURCE.openai.azure.com/"
+  AzureOpenAI__Deployment: "gpt-4o-mini"
+  AzureOpenAI__ApiVersion: "2024-08-01-preview"
+  Jira__BaseUrl: "https://your-domain.atlassian.net"
+  Jira__ProjectKey: "IT"

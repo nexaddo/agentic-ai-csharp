@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kube-system
+helmCharts:
+  - name: secrets-store-csi-driver
+    repo: https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+    version: 1.4.5
+    releaseName: csi-secrets-store
+    namespace: kube-system
+    valuesFile: driver-values.yaml
+  - name: csi-secrets-store-provider-azure
+    repo: https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+    version: 1.6.1
+    releaseName: csi-secrets-store-provider-azure
+    namespace: kube-system
+    valuesFile: azure-provider-values.yaml

@@ -1,0 +1,6 @@
+linux:
+  enabled: true
+enableSecretRotation: true
+rotationPollInterval: 2m
+syncSecret:
+  enabled: true

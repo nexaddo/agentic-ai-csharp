@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-agent
+  namespace: ai-support-prod
+spec:
+  template:
+    spec:
+      serviceAccountName: default
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: spc-azure-kv
+      containers:
+        - name: web
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/kv
+              readOnly: true
+          env:
+            - name: AzureOpenAI__Endpoint
+              valueFrom:
+                secretKeyRef:
+                  name: aoai-connection
+                  key: AOAI_ENDPOINT
+            - name: AzureOpenAI__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: aoai-connection
+                  key: AOAI_API_KEY
+            - name: AzureOpenAI__Deployment
+              valueFrom:
+                secretKeyRef:
+                  name: aoai-connection
+                  key: AOAI_DEPLOYMENT

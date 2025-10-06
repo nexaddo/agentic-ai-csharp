@@ -1,0 +1,3 @@
+linux:
+  enabled: true
+enableWorkloadIdentity: false

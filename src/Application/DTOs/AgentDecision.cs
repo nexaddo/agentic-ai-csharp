@@ -1,0 +1,1 @@
+namespace Application.DTOs { public sealed record AgentDecision(string Intent, string Priority, string Summary, bool CreateTicket = true); }

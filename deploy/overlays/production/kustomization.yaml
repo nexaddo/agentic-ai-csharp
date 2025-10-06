@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai-support-prod
+resources:
+  - ../../base
+  - secretproviderclass-azure-kv.yaml
+patchesStrategicMerge:
+  - patch-deployment.yaml
+  - patch-deployment-kv-volume.yaml

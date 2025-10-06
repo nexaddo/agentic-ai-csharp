@@ -1,0 +1,9 @@
+bin/
+obj/
+*.db
+*.user
+.env
+TestResults/
+.vscode/
+.idea/
+.vs

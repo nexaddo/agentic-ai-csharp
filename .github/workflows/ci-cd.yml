@@ -1,0 +1,179 @@
+name: CI / CD
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, closed]
+  push:
+    branches: [ main, develop, feature/** ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/ai-support-agent-csharp
+  DOTNET_VERSION: "8.0.x"
+
+jobs:
+  build_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: ${{ env.DOTNET_VERSION }} }
+      - run: dotnet restore SupportAgent.sln
+      - run: dotnet build --no-restore -c Release SupportAgent.sln
+      - run: dotnet test --no-build -c Release --logger trx --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: test-results, path: TestResults }
+
+  docker_publish:
+    runs-on: ubuntu-latest
+    needs: build_test
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    outputs:
+      deploy_tag: ${{ steps.vars.outputs.deploy_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: vars
+        run: |
+          SHA=${GITHUB_SHA::7}
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+            TAGS="${{ env.IMAGE_NAME }}:${VER},${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:${SHA}"
+          elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            TAGS="${{ env.IMAGE_NAME }}:main-${SHA},${{ env.IMAGE_NAME }}:latest"
+          else
+            SAFE=$(echo "${GITHUB_REF_NAME}" | tr '/' '-' )
+            TAGS="${{ env.IMAGE_NAME }}:${SAFE}-${SHA}"
+          fi
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          # pick first tag as deploy tag
+          echo "deploy_tag=$(echo $TAGS | cut -d',' -f1)" >> $GITHUB_OUTPUT
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.tags }}
+
+  deploy_staging:
+    name: Deploy Staging (auto)
+    runs-on: ubuntu-latest
+    needs: docker_publish
+    if: |
+      (github.ref == 'refs/heads/main') ||
+      (github.ref == 'refs/heads/develop') ||
+      startsWith(github.ref, 'refs/heads/feature/') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed')
+    environment:
+      name: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl & kustomize
+        uses: azure/setup-kubectl@v4
+        with: { version: "v1.29.0" }
+      - run: sudo curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash && sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Write kubeconfig
+        run: echo "${KUBE_CONFIG_B64}" | base64 -d > $HOME/.kube/config
+        env: { KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} }
+
+      - name: Set image for staging overlay
+        working-directory: deploy/overlays/staging
+        run: |
+          kustomize edit set image ghcr.io/nexaddo/agentic-ai-csharp=${{ needs.docker_publish.outputs.deploy_tag }}
+
+      - name: Optional per-PR/branch preview namespace
+        if: github.event_name == 'pull_request'
+        working-directory: deploy/overlays/staging
+        run: |
+          NS="ai-support-staging-pr-${{ github.event.number }}"
+          yq -i ".namespace = \"${NS}\"" kustomization.yaml || true
+          echo "Using namespace ${NS}"
+
+      - name: Generate SecretProviderClass (staging)
+        if: contains(matrix.env, 'staging') || contains(github.ref, 'refs/heads/main')
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq gettext-base
+          # ensure terraform state for the env is present/updated (optional: terraform output only)
+          pushd infra/environments/staging
+          terraform output -json >/tmp/tfout.json || true
+          popd
+
+          # Render SPC using TF outputs
+          scripts/gen-spc.sh infra/environments/staging \
+            deploy/overlays/staging/secretproviderclass-azure-kv.tmpl.yaml \
+            deploy/overlays/staging/secretproviderclass-azure-kv.yaml
+
+          # Apply the SPC before the overlay (so the volume can attach cleanly)
+          kubectl apply -f deploy/overlays/staging/secretproviderclass-azure-kv.yaml
+
+      - name: Apply staging
+        run: kubectl apply -k deploy/overlays/staging
+
+      - name: Wait rollout
+        run: kubectl rollout status deploy/stag-support-agent -n $(kubectl kustomize deploy/overlays/staging | yq '.metadata.namespace // "ai-support-staging"') --timeout=120s
+
+  teardown_preview:
+    name: Teardown Preview (on PR close)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with: { version: "v1.29.0" }
+      - run: echo "${KUBE_CONFIG_B64}" | base64 -d > $HOME/.kube/config
+        env: { KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} }
+      - name: Delete PR namespace
+        run: |
+          NS="ai-support-staging-pr-${{ github.event.number }}"
+          kubectl delete namespace "${NS}" --ignore-not-found=true
+
+  promote_to_prod:
+    name: Approve Promotion → Production
+    runs-on: ubuntu-latest
+    needs: [docker_publish, deploy_staging]
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    environment:
+      name: production
+      url: ${{ steps.expose.outputs.url || '' }}
+    steps:
+      - run: echo "Awaiting environment approval to promote…"
+
+  deploy_production:
+    name: Deploy Production (after approval)
+    runs-on: ubuntu-latest
+    needs: [promote_to_prod, docker_publish]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+        with: { version: "v1.29.0" }
+      - run: sudo curl -sL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash && sudo mv kustomize /usr/local/bin/kustomize
+      - run: echo "${KUBE_CONFIG_B64}" | base64 -d > $HOME/.kube/config
+        env: { KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }} }
+
+      - name: Set image for prod overlay
+        working-directory: deploy/overlays/production
+        run: |
+          kustomize edit set image ghcr.io/nexaddo/agentic-ai-csharp=${{ needs.docker_publish.outputs.deploy_tag }}
+
+      - name: Apply production
+        run: kubectl apply -k deploy/overlays/production
+
+      - name: Wait rollout
+        run: kubectl rollout status deploy/support-agent -n ai-support-prod --timeout=180s
