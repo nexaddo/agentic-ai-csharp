@@ -4,6 +4,9 @@ using Application.Tools;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using NSubstitute;
+using System.Net;
+using System.Net.Http.Json;
+using System.Reflection;
 using Xunit;
 
 namespace Application.Tests;
@@ -15,7 +18,7 @@ public class AgentServiceTests
     {
         // arrange
         var ai = new FakeAzureOpenAiClient();
-        var jira = new FakeJiraClient();
+        var jira = new FakeJiraClient(SubstituteForHttpClientFactory("IT-123", "created"));
         var notify = new FakeNotify();
         using var db = InMemoryDb.Create();
 
@@ -36,7 +39,7 @@ public class AgentServiceTests
     {
         // arrange
         var ai = new FakeAzureOpenAiClient();
-        var jira = new FakeJiraClient();
+        var jira = new FakeJiraClient(SubstituteForHttpClientFactory("IT-123", "created"));
         var notify = new FakeNotify();
         using var db = InMemoryDb.Create();
 
@@ -60,7 +63,7 @@ public class AgentServiceTests
         var ai = new FakeAzureOpenAiClient();
         var jira = Substitute.For<JiraClient>(
             Substitute.For<IHttpClientFactory>(),
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
             {
                 ["Jira:BaseUrl"] = "https://example.atlassian.net",
                 ["Jira:Email"] = "x@example.com",
@@ -69,7 +72,7 @@ public class AgentServiceTests
             }).Build()
         );
         jira.CreateTicketAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns((string?)null);
+            .Returns((string)null);
 
         var notify = new FakeNotify();
         using var db = InMemoryDb.Create();
@@ -84,5 +87,29 @@ public class AgentServiceTests
         result.Status.Should().Be("failed");
         result.TicketKey.Should().BeNull();
         db.Tickets.Count().Should().Be(0);
+    }
+
+    private IHttpClientFactory SubstituteForHttpClientFactory(string key, string result)
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        var mockHttpMessageHandler = Substitute.For<HttpMessageHandler>();
+
+        var mockResponseContent = new { key = key, status = "success" };
+
+        var messageHandler = Substitute.For<HttpMessageHandler>();
+
+        messageHandler
+            .GetType()
+            .GetMethod("SendAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(messageHandler, new object[] { Arg.Any<HttpRequestMessage>(), Arg.Any<CancellationToken>() })
+            .Returns(Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(mockResponseContent)
+            }));
+
+        var httpClient = new HttpClient(messageHandler);
+
+        factory.CreateClient(Arg.Any<string>()).Returns(httpClient);
+        return factory;
     }
 }

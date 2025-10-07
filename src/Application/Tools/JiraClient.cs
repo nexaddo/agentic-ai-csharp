@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Application.Tools
 {
-    public sealed class JiraClient
+    public class JiraClient : IJiraClient
     {
         readonly HttpClient _http; readonly string _baseUrl;
         readonly string _projectKey;
@@ -26,6 +26,7 @@ namespace Application.Tools
                 _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", b64);
             }
         }
+
         public async Task<string> CreateTicketAsync(string summary, string description, string priority, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(_baseUrl))
@@ -47,9 +48,14 @@ namespace Application.Tools
             };
             var json = JsonSerializer.Serialize(payload);
             var res = await _http.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"), ct);
-            if (!res.IsSuccessStatusCode) return null; using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct)); 
+            if (!res.IsSuccessStatusCode) 
+            { 
+                return null; 
+            }
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
             return doc.RootElement.TryGetProperty("key", out var key) ? key.GetString() : null;
         }
+
         static string ToTitle(string s) => string.IsNullOrWhiteSpace(s) ? "Low" : char.ToUpper(s[0]) + s[1..].ToLower();
     }
 }

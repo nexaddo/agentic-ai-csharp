@@ -13,7 +13,7 @@ namespace Infrastructure
         public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
         {
             services.AddDbContext<AppDbContext>(o => o.UseSqlite(config.GetConnectionString("Sqlite") ?? "Data Source=support.db")); 
-            services.AddHttpClient(); services.AddSingleton<AzureOpenAiClient>(); services.AddSingleton<JiraClient>(); 
+            services.AddHttpClient(); services.AddSingleton<AzureOpenAiChatClient>(); services.AddSingleton<JiraClient>(); 
             services.AddSingleton<NotificationService>(); services.AddScoped<IAgentService, AgentService>(); 
             using var scope = services.BuildServiceProvider().CreateScope(); 
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); 
